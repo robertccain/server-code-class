@@ -47,6 +47,8 @@ from urllib.parse import unquote, parse_qs
 import os
 import threading
 from socketserver import ThreadingMixIn
+from http.cookies import SimpleCookie, CookieError
+
 
 class ThreadHTTPServer(ThreadingMixIn, http.server.HTTPServer):
     "This is an HTTPServer that supports thread-based concurrency."
@@ -93,6 +95,18 @@ class Shortener(http.server.BaseHTTPRequestHandler):
         # Strip off the / and we have either empty string or a name.
         name = unquote(self.path[1:])
 
+        if 'cookie' in self.headers:
+            try:
+                # Extract and decode the cookie.
+                c = cookies.SimpleCookie(self.headers['cookie'])
+                name = c["bearname"].value
+
+                # Craft a message, escaping any HTML special chars in name.
+                message = "Hey there, " + html_escape(name)
+            except (KeyError, cookies.CookieError) as e:
+                message = "I'm not sure who you are!"
+                print(e)
+
         if name:
             if name in memory:
                 # 2. Send a 303 redirect to the long URI in memory[name].
@@ -131,7 +145,6 @@ class Shortener(http.server.BaseHTTPRequestHandler):
             return
             # 3. Serve a 400 error with a useful message.
             #    Delete the following line. is above
-
         longuri = params["longuri"][0]
         shortname = params["shortname"][0]
 
@@ -139,10 +152,16 @@ class Shortener(http.server.BaseHTTPRequestHandler):
             # This URI is good!  Remember it under the specified name.
             memory[shortname] = longuri
 
+            out_cookie = SimpleCookie()
+            out_cookie["bearname"] = "Smokey Bear"
+            out_cookie["bearname"]["max-age"] = 600
+            out_cookie["bearname"]["httponly"] = True
+
             # 4. Serve a redirect to the root page (the form).
             #    Delete the following line.
             self.send_response(303)
             self.send_header('Location', '/')
+            self.send_header("Set-Cookie", out_cookie["bearname"].OutputString())
             self.end_headers()
         else:
             # Didn't successfully fetch the long URI.
@@ -153,6 +172,8 @@ class Shortener(http.server.BaseHTTPRequestHandler):
                 "Couldn't fetch URI '{}'. Sorry!".format(longuri).encode())
             # 5. Send a 404 error with a useful message.
             #    Delete the following line.
+
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8000))   # Use PORT if it's there.
