@@ -89,7 +89,51 @@ def CheckURI(uri, timeout=5):
     except requests.RequestException:
         return False
 
+
 class Shortener(http.server.BaseHTTPRequestHandler):
+    def do_POST(self):
+        # Decode the form data.
+        length = int(self.headers.get('Content-length', 0))
+        body = self.rfile.read(length).decode()
+        params = parse_qs(body)
+
+        # Check that the user submitted the form fields.
+        if "longuri" not in params or "shortname" not in params:
+            self.send_response(400)
+            self.send_header('Content-type', 'text/plain; charset=utf-8')
+            self.end_headers()
+            self.wfile.write("Missing form fields!".encode())
+            return
+            # 3. Serve a 400 error with a useful message.
+            #    Delete the following line. is above
+        longuri = params["longuri"][0]
+        shortname = params["shortname"][0]
+
+        if CheckURI(longuri):
+            # This URI is good!  Remember it under the specified name.
+            memory[shortname] = longuri
+
+            out_cookie = cooSimpleCookie()
+            out_cookie["bearname"] = "Smokey Bear"
+            out_cookie["bearname"]["max-age"] = 600
+            out_cookie["bearname"]["httponly"] = True
+
+            # 4. Serve a redirect to the root page (the form).
+            #    Delete the following line.
+            self.send_response(303)
+            self.send_header('Location', '/')
+            self.send_header("Set-Cookie", out_cookie["bearname"].OutputString())
+            self.end_headers()
+        else:
+            # Didn't successfully fetch the long URI.
+            self.send_response(404)
+            self.send_header('Content-type', 'text/plain; charset=utf-8')
+            self.end_headers()
+            self.wfile.write(
+                "Couldn't fetch URI '{}'. Sorry!".format(longuri).encode())
+            # 5. Send a 404 error with a useful message.
+            #    Delete the following line.
+
     def do_GET(self):
         # A GET request will either be for / (the root path) or for /some-name.
         # Strip off the / and we have either empty string or a name.
@@ -98,8 +142,8 @@ class Shortener(http.server.BaseHTTPRequestHandler):
         if 'cookie' in self.headers:
             try:
                 # Extract and decode the cookie.
-                c = cookies.SimpleCookie(self.headers['cookie'])
-                name = c["bearname"].value
+                cookie = cookies.SimpleCookie(self.headers['cookie'])
+                name = cookie["bearname"].value
 
                 # Craft a message, escaping any HTML special chars in name.
                 message = "Hey there, " + html_escape(name)
@@ -130,48 +174,7 @@ class Shortener(http.server.BaseHTTPRequestHandler):
                               for key in sorted(memory.keys()))
             self.wfile.write(form.format(known).encode())
 
-    def do_POST(self):
-        # Decode the form data.
-        length = int(self.headers.get('Content-length', 0))
-        body = self.rfile.read(length).decode()
-        params = parse_qs(body)
 
-        # Check that the user submitted the form fields.
-        if "longuri" not in params or "shortname" not in params:
-            self.send_response(400)
-            self.send_header('Content-type', 'text/plain; charset=utf-8')
-            self.end_headers()
-            self.wfile.write("Missing form fields!".encode())
-            return
-            # 3. Serve a 400 error with a useful message.
-            #    Delete the following line. is above
-        longuri = params["longuri"][0]
-        shortname = params["shortname"][0]
-
-        if CheckURI(longuri):
-            # This URI is good!  Remember it under the specified name.
-            memory[shortname] = longuri
-
-            out_cookie = SimpleCookie()
-            out_cookie["bearname"] = "Smokey Bear"
-            out_cookie["bearname"]["max-age"] = 600
-            out_cookie["bearname"]["httponly"] = True
-
-            # 4. Serve a redirect to the root page (the form).
-            #    Delete the following line.
-            self.send_response(303)
-            self.send_header('Location', '/')
-            self.send_header("Set-Cookie", out_cookie["bearname"].OutputString())
-            self.end_headers()
-        else:
-            # Didn't successfully fetch the long URI.
-            self.send_response(404)
-            self.send_header('Content-type', 'text/plain; charset=utf-8')
-            self.end_headers()
-            self.wfile.write(
-                "Couldn't fetch URI '{}'. Sorry!".format(longuri).encode())
-            # 5. Send a 404 error with a useful message.
-            #    Delete the following line.
 
 
 
